@@ -208,7 +208,9 @@ func removeFlag(flag string) bool {
 func runSelector(triesPath, searchTerm, andType string, andExit bool, andKeys []string, andConfirm string) *selector.Result {
 	opts := []selector.Option{
 		selector.WithBasePath(triesPath),
-		selector.WithSearchTerm(searchTerm),
+	}
+	if searchTerm != "" {
+		opts = append(opts, selector.WithSearchTerm(searchTerm))
 	}
 	if andType != "" {
 		opts = append(opts, selector.WithAndType(andType))
@@ -224,8 +226,7 @@ func runSelector(triesPath, searchTerm, andType string, andExit bool, andKeys []
 		opts = append(opts, selector.WithTestConfirm(andConfirm))
 	}
 
-	s := selector.NewSelector(opts...)
-	return s.Run()
+	return selector.RunBubbletea(opts...)
 }
 
 func isGitWorktree(path string) bool {
