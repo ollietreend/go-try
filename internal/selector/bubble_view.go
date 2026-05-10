@@ -2,7 +2,6 @@ package selector
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,28 +12,6 @@ import (
 	"github.com/ollietreend/go-try/internal/fuzzy"
 	"github.com/ollietreend/go-try/internal/tui"
 )
-
-type testReader struct {
-	data [][]byte
-	pos  int
-}
-
-func newTestReader(keys []string) *testReader {
-	var data [][]byte
-	for _, k := range keys {
-		data = append(data, []byte(k))
-	}
-	return &testReader{data: data}
-}
-
-func (t *testReader) Read(p []byte) (int, error) {
-	if t.pos >= len(t.data) {
-		return 0, io.EOF
-	}
-	n := copy(p, t.data[t.pos])
-	t.pos++
-	return n, nil
-}
 
 func (s *bubbleSelector) View() string {
 	switch s.mode {
@@ -63,7 +40,7 @@ func (s *bubbleSelector) viewMain() string {
 
 	var buf strings.Builder
 
-	buf.WriteString(centerLine(w, tui.AccentText("Try Directory Selection"), "\U0001F3E0 "))
+	buf.WriteString(centerLine(w, "\U0001F3E0 "+tui.AccentText("Try Directory Selection")))
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
@@ -81,13 +58,6 @@ func (s *bubbleSelector) viewMain() string {
 	visible := h - 6
 	if visible < 3 {
 		visible = 3
-	}
-
-	if s.cursorPos < s.scrollOffset {
-		s.scrollOffset = s.cursorPos
-	}
-	if s.cursorPos >= s.scrollOffset+visible {
-		s.scrollOffset = s.cursorPos - visible + 1
 	}
 
 	totalItems := len(results)
@@ -218,7 +188,7 @@ func (s *bubbleSelector) viewDelete() string {
 	}
 
 	count := len(markedItems)
-	buf.WriteString(centerLine(w, tui.AccentText(fmt.Sprintf("Delete %d %s?", count, pluralWord("directory", count))), "\U0001F5D1\uFE0F "))
+	buf.WriteString(centerLine(w, "\U0001F5D1\uFE0F "+tui.AccentText(fmt.Sprintf("Delete %d %s?", count, pluralWord("directory", count)))))
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
@@ -232,13 +202,13 @@ func (s *bubbleSelector) viewDelete() string {
 
 	prefix := "Type YES to confirm: "
 	inputText := renderInput(s.deleteBuf, s.deleteCursor)
-	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText, ""))
+	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText))
 	buf.WriteByte('\n')
 
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
-	buf.WriteString(centerLine(w, tui.DimText("Enter: Confirm  Esc: Cancel"), ""))
+	buf.WriteString(centerLine(w, tui.DimText("Enter: Confirm  Esc: Cancel")))
 
 	return buf.String()
 }
@@ -251,7 +221,7 @@ func (s *bubbleSelector) viewRename() string {
 
 	var buf strings.Builder
 
-	buf.WriteString(centerLine(w, tui.AccentText("Rename directory"), "\u270F\uFE0F "))
+	buf.WriteString(centerLine(w, "\u270F\uFE0F "+tui.AccentText("Rename directory")))
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
@@ -262,19 +232,19 @@ func (s *bubbleSelector) viewRename() string {
 
 	prefix := "New name: "
 	inputText := renderInput(s.renameBuf, s.renameCursor)
-	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText, ""))
+	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText))
 	buf.WriteByte('\n')
 
 	if s.renameError != "" {
 		buf.WriteByte('\n')
-		buf.WriteString(centerLine(w, tui.BoldText(s.renameError), ""))
+		buf.WriteString(centerLine(w, tui.BoldText(s.renameError)))
 		buf.WriteByte('\n')
 	}
 
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
-	buf.WriteString(centerLine(w, tui.DimText("Enter: Confirm  Esc: Cancel"), ""))
+	buf.WriteString(centerLine(w, tui.DimText("Enter: Confirm  Esc: Cancel")))
 
 	return buf.String()
 }
@@ -287,7 +257,7 @@ func (s *bubbleSelector) viewAscend() string {
 
 	var buf strings.Builder
 
-	buf.WriteString(centerLine(w, tui.AccentText("Graduate try to project"), "\U0001F680 "))
+	buf.WriteString(centerLine(w, "\U0001F680 "+tui.AccentText("Graduate try to project")))
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
@@ -299,28 +269,28 @@ func (s *bubbleSelector) viewAscend() string {
 	if s.ascendProjectsDir != filepath.Dir(s.basePath) {
 		envHint = "$TRY_PROJECTS"
 	}
-	buf.WriteString(centerLine(w, tui.DimText(fmt.Sprintf("Destination (%s: %s)", envHint, s.ascendProjectsDir)), ""))
+	buf.WriteString(centerLine(w, tui.DimText(fmt.Sprintf("Destination (%s: %s)", envHint, s.ascendProjectsDir))))
 	buf.WriteByte('\n')
 
 	prefix := "Move to: "
 	inputText := renderInput(s.ascendBuf, s.ascendCursor)
-	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText, ""))
+	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText))
 	buf.WriteByte('\n')
 
 	buf.WriteByte('\n')
-	buf.WriteString(centerLine(w, tui.DimText("A symlink will be left in the tries directory"), ""))
+	buf.WriteString(centerLine(w, tui.DimText("A symlink will be left in the tries directory")))
 	buf.WriteByte('\n')
 
 	if s.ascendError != "" {
 		buf.WriteByte('\n')
-		buf.WriteString(centerLine(w, tui.BoldText(s.ascendError), ""))
+		buf.WriteString(centerLine(w, tui.BoldText(s.ascendError)))
 		buf.WriteByte('\n')
 	}
 
 	buf.WriteByte('\n')
 	buf.WriteString(tui.DimText(lineFill(w, "\u2500")))
 	buf.WriteByte('\n')
-	buf.WriteString(centerLine(w, tui.DimText("Enter: Confirm  Esc: Cancel"), ""))
+	buf.WriteString(centerLine(w, tui.DimText("Enter: Confirm  Esc: Cancel")))
 
 	return buf.String()
 }
@@ -370,7 +340,7 @@ func padRight(left, right string, width int) string {
 	return left + strings.Repeat(" ", padding) + right
 }
 
-func centerLine(w int, content, prefix string) string {
+func centerLine(w int, content string) string {
 	visWidth := tui.VisibleWidth(content)
 	leftPad := (w - 1 - visWidth) / 2
 	if leftPad < 0 {
@@ -400,33 +370,32 @@ func keyStringToMsg(k string) tea.KeyMsg {
 	case "\x7f", "\b":
 		return tea.KeyMsg{Type: tea.KeyBackspace}
 	case "\x01":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{1}}
+		return tea.KeyMsg{Type: tea.KeyCtrlA}
 	case "\x02":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{2}}
+		return tea.KeyMsg{Type: tea.KeyCtrlB}
 	case "\x04":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{4}}
+		return tea.KeyMsg{Type: tea.KeyCtrlD}
 	case "\x05":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{5}}
+		return tea.KeyMsg{Type: tea.KeyCtrlE}
 	case "\x06":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{6}}
+		return tea.KeyMsg{Type: tea.KeyCtrlF}
 	case "\x07":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{7}}
+		return tea.KeyMsg{Type: tea.KeyCtrlG}
 	case "\x0b":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{11}}
+		return tea.KeyMsg{Type: tea.KeyCtrlK}
 	case "\x0e":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{14}}
+		return tea.KeyMsg{Type: tea.KeyCtrlN}
 	case "\x10":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{16}}
+		return tea.KeyMsg{Type: tea.KeyCtrlP}
 	case "\x12":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{18}}
+		return tea.KeyMsg{Type: tea.KeyCtrlR}
 	case "\x14":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{20}}
+		return tea.KeyMsg{Type: tea.KeyCtrlT}
 	case "\x17":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{23}}
+		return tea.KeyMsg{Type: tea.KeyCtrlW}
 	default:
 		if len(k) == 1 {
-			runes := []rune(k)
-			return tea.KeyMsg{Type: tea.KeyRunes, Runes: runes}
+			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 		}
 		return tea.KeyMsg{}
 	}
@@ -464,29 +433,33 @@ func RunBubbletea(opts ...Option) *Result {
 	renderOnce := s.renderOnce
 	testKeys := s.testKeys
 
-	if testKeys != nil && len(testKeys) > 0 {
-		progOpts = append(progOpts, tea.WithInput(os.Stdin))
-	}
-
 	if renderOnce && (testKeys == nil || len(testKeys) == 0) {
 		s.init()
 		os.Stderr.WriteString(s.View())
 		return nil
 	}
 
-	p := tea.NewProgram(s, progOpts...)
-
 	if testKeys != nil && len(testKeys) > 0 {
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			for _, k := range testKeys {
-				p.Send(keyStringToMsg(k))
+		s.init()
+		for _, k := range testKeys {
+			msg := keyStringToMsg(k)
+			model, cmd := s.Update(msg)
+			next, ok := model.(*bubbleSelector)
+			if !ok {
+				break
 			}
-			time.Sleep(30 * time.Millisecond)
-			p.Quit()
-		}()
+			s = next
+			if cmd != nil {
+				break
+			}
+		}
+		if renderOnce {
+			os.Stderr.WriteString(s.View())
+		}
+		return s.result
 	}
 
+	p := tea.NewProgram(s, progOpts...)
 	model, err := p.Run()
 	if err != nil {
 		return nil

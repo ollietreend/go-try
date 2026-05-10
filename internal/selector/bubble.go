@@ -185,7 +185,42 @@ func (s *bubbleSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return s.handleKey(msg)
 	}
+	s.clampCursor()
+	s.clampScroll()
 	return s, nil
+}
+
+func (s *bubbleSelector) clampCursor() {
+	results := s.getResults()
+	total := len(results)
+	if s.inputBuf != "" {
+		total++
+	}
+	if s.cursorPos >= total {
+		s.cursorPos = total - 1
+	}
+	if s.cursorPos < 0 {
+		s.cursorPos = 0
+	}
+}
+
+func (s *bubbleSelector) clampScroll() {
+	results := s.getResults()
+	showCreateNew := s.inputBuf != ""
+	total := len(results)
+	if showCreateNew {
+		total++
+	}
+	visible := s.height - 6
+	if visible < 3 {
+		visible = 3
+	}
+	if s.cursorPos < s.scrollOffset {
+		s.scrollOffset = s.cursorPos
+	}
+	if s.cursorPos >= s.scrollOffset+visible {
+		s.scrollOffset = s.cursorPos - visible + 1
+	}
 }
 
 func (s *bubbleSelector) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -257,88 +292,97 @@ func (s *bubbleSelector) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		s.cursorPos = 0
 
+	case tea.KeyCtrlA:
+		s.inputCursor = 0
+
+	case tea.KeyCtrlB:
+		if s.inputCursor > 0 {
+			s.inputCursor--
+		}
+
+	case tea.KeyCtrlD:
+		results := s.getResults()
+		if s.cursorPos < len(results) {
+			path := results[s.cursorPos].Entry.Path
+			found := false
+			for i, p := range s.markedForDeletion {
+				if p == path {
+					s.markedForDeletion = append(s.markedForDeletion[:i], s.markedForDeletion[i+1:]...)
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.markedForDeletion = append(s.markedForDeletion, path)
+				s.deleteMode = true
+			}
+			if len(s.markedForDeletion) == 0 {
+				s.deleteMode = false
+			}
+		}
+
+	case tea.KeyCtrlE:
+		s.inputCursor = len(s.inputBuf)
+
+	case tea.KeyCtrlF:
+		if s.inputCursor < len(s.inputBuf) {
+			s.inputCursor++
+		}
+
+	case tea.KeyCtrlG:
+		results := s.getResults()
+		if s.cursorPos < len(results) {
+			s.enterAscendDialog(results[s.cursorPos])
+		}
+
+	case tea.KeyCtrlK:
+		s.inputBuf = s.inputBuf[:s.inputCursor]
+
+	case tea.KeyCtrlN:
+		total := len(s.getResults())
+		if s.inputBuf != "" {
+			total++
+		}
+		if s.cursorPos < total-1 {
+			s.cursorPos++
+		}
+
+	case tea.KeyCtrlP:
+		if s.cursorPos > 0 {
+			s.cursorPos--
+		}
+
+	case tea.KeyCtrlR:
+		results := s.getResults()
+		if s.cursorPos < len(results) {
+			s.enterRenameDialog(results[s.cursorPos])
+		}
+
+	case tea.KeyCtrlT:
+		datePrefix := time.Now().Format("2006-01-02")
+		if s.inputBuf != "" {
+			name := datePrefix + "-" + strings.ReplaceAll(s.inputBuf, " ", "-")
+			s.result = &Result{Type: ResultMkdir, Path: filepath.Join(s.basePath, name)}
+		} else {
+			s.mode = ModePrompt
+		}
+		if s.result != nil {
+			return s, tea.Quit
+		}
+
+	case tea.KeyCtrlW:
+		if s.inputCursor > 0 {
+			newPos := wordBoundaryBackward(s.inputBuf, s.inputCursor)
+			s.inputBuf = s.inputBuf[:newPos] + s.inputBuf[s.inputCursor:]
+			s.inputCursor = newPos
+		}
+
 	case tea.KeyRunes:
 		for _, r := range msg.Runes {
-			switch r {
-			case 1:
-				s.inputCursor = 0
-			case 2:
-				if s.inputCursor > 0 {
-					s.inputCursor--
-				}
-			case 4:
-				results := s.getResults()
-				if s.cursorPos < len(results) {
-					path := results[s.cursorPos].Entry.Path
-					found := false
-					for i, p := range s.markedForDeletion {
-						if p == path {
-							s.markedForDeletion = append(s.markedForDeletion[:i], s.markedForDeletion[i+1:]...)
-							found = true
-							break
-						}
-					}
-					if !found {
-						s.markedForDeletion = append(s.markedForDeletion, path)
-						s.deleteMode = true
-					}
-					if len(s.markedForDeletion) == 0 {
-						s.deleteMode = false
-					}
-				}
-			case 5:
-				s.inputCursor = len(s.inputBuf)
-			case 6:
-				if s.inputCursor < len(s.inputBuf) {
-					s.inputCursor++
-				}
-			case 7:
-				results := s.getResults()
-				if s.cursorPos < len(results) {
-					s.enterAscendDialog(results[s.cursorPos])
-				}
-			case 11:
-				s.inputBuf = s.inputBuf[:s.inputCursor]
-			case 14:
-				total := len(s.getResults())
-				if s.inputBuf != "" {
-					total++
-				}
-				if s.cursorPos < total-1 {
-					s.cursorPos++
-				}
-			case 16:
-				if s.cursorPos > 0 {
-					s.cursorPos--
-				}
-			case 18:
-				results := s.getResults()
-				if s.cursorPos < len(results) {
-					s.enterRenameDialog(results[s.cursorPos])
-				}
-			case 20:
-				datePrefix := time.Now().Format("2006-01-02")
-				if s.inputBuf != "" {
-					name := datePrefix + "-" + strings.ReplaceAll(s.inputBuf, " ", "-")
-					s.result = &Result{Type: ResultMkdir, Path: filepath.Join(s.basePath, name)}
-				} else {
-					s.mode = ModePrompt
-				}
-				if s.result != nil {
-					return s, tea.Quit
-				}
-			case 23:
-				if s.inputCursor > 0 {
-					newPos := wordBoundaryBackward(s.inputBuf, s.inputCursor)
-					s.inputBuf = s.inputBuf[:newPos] + s.inputBuf[s.inputCursor:]
-					s.inputCursor = newPos
-				}
-			default:
-				if r >= 32 && r != 127 && inputCharRune(r) {
-					s.inputBuf = s.inputBuf[:s.inputCursor] + string(r) + s.inputBuf[s.inputCursor:]
-					s.inputCursor++
-					s.cursorPos = 0
-				}
+			if r >= 32 && r != 127 && inputCharRune(r) {
+				s.inputBuf = s.inputBuf[:s.inputCursor] + string(r) + s.inputBuf[s.inputCursor:]
+				s.inputCursor++
+				s.cursorPos = 0
 			}
 		}
 	}
@@ -373,11 +417,14 @@ func (s *bubbleSelector) handleDeleteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Paths:    validatedPaths,
 				BasePath: baseReal,
 			}
+			s.markedForDeletion = nil
+			s.deleteMode = false
+			s.mode = ModeMain
+			return s, tea.Quit
 		}
 		s.markedForDeletion = nil
 		s.deleteMode = false
 		s.mode = ModeMain
-		return s, tea.Quit
 	case tea.KeyEsc:
 		s.markedForDeletion = nil
 		s.deleteMode = false
@@ -413,7 +460,10 @@ func (s *bubbleSelector) handleRenameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		errMsg := s.finalizeRename()
 		if errMsg == "" {
-			return s, tea.Quit
+			if s.result != nil {
+				return s, tea.Quit
+			}
+			return s, nil
 		}
 		s.renameError = errMsg
 	case tea.KeyEsc:
@@ -424,37 +474,40 @@ func (s *bubbleSelector) handleRenameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s.renameCursor--
 		}
 		s.renameError = ""
+	case tea.KeyCtrlA:
+		s.renameCursor = 0
+
+	case tea.KeyCtrlE:
+		s.renameCursor = len(s.renameBuf)
+
+	case tea.KeyCtrlB:
+		if s.renameCursor > 0 {
+			s.renameCursor--
+		}
+
+	case tea.KeyCtrlF:
+		if s.renameCursor < len(s.renameBuf) {
+			s.renameCursor++
+		}
+
+	case tea.KeyCtrlK:
+		s.renameBuf = s.renameBuf[:s.renameCursor]
+		s.renameError = ""
+
+	case tea.KeyCtrlW:
+		if s.renameCursor > 0 {
+			newPos := wordBoundaryBackward(s.renameBuf, s.renameCursor)
+			s.renameBuf = s.renameBuf[:newPos] + s.renameBuf[s.renameCursor:]
+			s.renameCursor = newPos
+		}
+		s.renameError = ""
+
 	case tea.KeyRunes:
 		for _, r := range msg.Runes {
-			switch r {
-			case 1:
-				s.renameCursor = 0
-			case 5:
-				s.renameCursor = len(s.renameBuf)
-			case 2:
-				if s.renameCursor > 0 {
-					s.renameCursor--
-				}
-			case 6:
-				if s.renameCursor < len(s.renameBuf) {
-					s.renameCursor++
-				}
-			case 11:
-				s.renameBuf = s.renameBuf[:s.renameCursor]
+			if r >= 32 && renameCharRune(r) {
+				s.renameBuf = s.renameBuf[:s.renameCursor] + string(r) + s.renameBuf[s.renameCursor:]
+				s.renameCursor++
 				s.renameError = ""
-			case 23:
-				if s.renameCursor > 0 {
-					newPos := wordBoundaryBackward(s.renameBuf, s.renameCursor)
-					s.renameBuf = s.renameBuf[:newPos] + s.renameBuf[s.renameCursor:]
-					s.renameCursor = newPos
-				}
-				s.renameError = ""
-			default:
-				if r >= 32 && renameCharRune(r) {
-					s.renameBuf = s.renameBuf[:s.renameCursor] + string(r) + s.renameBuf[s.renameCursor:]
-					s.renameCursor++
-					s.renameError = ""
-				}
 			}
 		}
 	}
@@ -477,6 +530,7 @@ func (s *bubbleSelector) finalizeRename() string {
 	}
 	if newName == s.renameEntry.Entry.Name {
 		s.mode = ModeMain
+		s.result = nil
 		return ""
 	}
 	if _, err := os.Stat(filepath.Join(s.basePath, newName)); err == nil {
@@ -525,37 +579,40 @@ func (s *bubbleSelector) handleAscendKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s.ascendCursor--
 		}
 		s.ascendError = ""
+	case tea.KeyCtrlA:
+		s.ascendCursor = 0
+
+	case tea.KeyCtrlE:
+		s.ascendCursor = len(s.ascendBuf)
+
+	case tea.KeyCtrlB:
+		if s.ascendCursor > 0 {
+			s.ascendCursor--
+		}
+
+	case tea.KeyCtrlF:
+		if s.ascendCursor < len(s.ascendBuf) {
+			s.ascendCursor++
+		}
+
+	case tea.KeyCtrlK:
+		s.ascendBuf = s.ascendBuf[:s.ascendCursor]
+		s.ascendError = ""
+
+	case tea.KeyCtrlW:
+		if s.ascendCursor > 0 {
+			newPos := wordBoundaryBackward(s.ascendBuf, s.ascendCursor)
+			s.ascendBuf = s.ascendBuf[:newPos] + s.ascendBuf[s.ascendCursor:]
+			s.ascendCursor = newPos
+		}
+		s.ascendError = ""
+
 	case tea.KeyRunes:
 		for _, r := range msg.Runes {
-			switch r {
-			case 1:
-				s.ascendCursor = 0
-			case 5:
-				s.ascendCursor = len(s.ascendBuf)
-			case 2:
-				if s.ascendCursor > 0 {
-					s.ascendCursor--
-				}
-			case 6:
-				if s.ascendCursor < len(s.ascendBuf) {
-					s.ascendCursor++
-				}
-			case 11:
-				s.ascendBuf = s.ascendBuf[:s.ascendCursor]
+			if r >= 32 && ascendCharRune(r) {
+				s.ascendBuf = s.ascendBuf[:s.ascendCursor] + string(r) + s.ascendBuf[s.ascendCursor:]
+				s.ascendCursor++
 				s.ascendError = ""
-			case 23:
-				if s.ascendCursor > 0 {
-					newPos := wordBoundaryBackward(s.ascendBuf, s.ascendCursor)
-					s.ascendBuf = s.ascendBuf[:newPos] + s.ascendBuf[s.ascendCursor:]
-					s.ascendCursor = newPos
-				}
-				s.ascendError = ""
-			default:
-				if r >= 32 && ascendCharRune(r) {
-					s.ascendBuf = s.ascendBuf[:s.ascendCursor] + string(r) + s.ascendBuf[s.ascendCursor:]
-					s.ascendCursor++
-					s.ascendError = ""
-				}
 			}
 		}
 	}
