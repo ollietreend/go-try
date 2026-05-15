@@ -774,11 +774,15 @@ func (s *Selector) renderEntryLine(scr *tui.Screen, result fuzzy.MatchResult, se
 
 	icon := "\U0001F4C1"
 	if isMarked {
-		icon = "\U0001F5D1\uFE0F"
+		icon = "\U0001F5D1"
 	} else if entry.IsSymlink {
 		icon = "\U0001F517"
 	}
-	line.Write().WriteEmoji(icon).Write(" ")
+	if isMarked {
+		line.Write().WriteEmoji(icon).Write("  ")
+	} else {
+		line.Write().WriteEmoji(icon).Write(" ")
+	}
 
 	name := entry.Name
 	if fuzzy.HasDatePrefix(name) {
@@ -850,11 +854,11 @@ func (s *Selector) renderCreateLine(scr *tui.Screen, selected bool) {
 func (s *Selector) renderDeleteDialog(items []fuzzy.MatchResult, confirmBuf string, confirmCursor int) {
 	scr := tui.NewScreen(os.Stderr, s.width, s.height)
 
-	scr.Header.AddLine("").Center().WriteEmoji("\U0001F5D1\uFE0F").WriteAccent(fmt.Sprintf("  Delete %d %s?", len(items), plural("directory", len(items))))
+	scr.Header.AddLine("").Center().WriteEmoji("\U0001F5D1").WriteAccent(fmt.Sprintf("  Delete %d %s?", len(items), plural("directory", len(items))))
 	scr.Header.AddLine("").Write().WriteDim(fill("─", s.width))
 
 	for _, item := range items {
-		scr.Body.AddLine(tui.DangerBG).Write().WriteEmoji("\U0001F5D1\uFE0F").Write(" " + item.Entry.Name)
+		scr.Body.AddLine(tui.DangerBG).Write().WriteEmoji("\U0001F5D1").Write(" " + item.Entry.Name)
 	}
 
 	scr.Body.AddLine("")

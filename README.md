@@ -33,18 +33,29 @@ mkdir -p '/Users/you/src/tries/2026-05-02-project' && \
 
 ## Install
 
+### From source
+
 ```bash
-go install github.com/ollietreend/go-try/cmd/try@latest
+git clone https://github.com/ollietreend/go-try.git
+cd go-try
+go build -o ~/.local/bin/try ./cmd/try/
 ```
 
-Then add to your shell config:
+Make sure `~/.local/bin` is in your `PATH`. Then add to your shell config:
 
 ```bash
 # bash/zsh (~/.zshrc or ~/.bashrc)
-eval "$(try init ~/src/tries)"
+eval "$(~/.local/bin/try init ~/src/tries)"
 
 # fish (~/.config/fish/config.fish)
-eval (try init ~/src/tries | string collect)
+eval (~/.local/bin/try init ~/src/tries | string collect)
+```
+
+### Via go install
+
+```bash
+go install github.com/ollietreend/go-try/cmd/try@latest
+eval "$(try init ~/src/tries)"
 ```
 
 ## Usage
