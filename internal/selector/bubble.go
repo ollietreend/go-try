@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
 
 	"github.com/ollietreend/go-try/internal/fuzzy"
 )
@@ -32,8 +33,7 @@ type bubbleSelector struct {
 	searchTerm string
 	result     *Result
 
-	inputBuf    string
-	inputCursor int
+	searchInput textinput.Model
 	cursorPos   int
 	scrollOffset int
 	allTries    []DirEntry
@@ -43,22 +43,15 @@ type bubbleSelector struct {
 
 	deleteMode  bool
 	markedForDeletion []string
-	deleteBuf   string
-	deleteCursor int
+
+	dialogInput   textinput.Model
 
 	renameEntry    fuzzy.MatchResult
-	renameBuf      string
-	renameCursor   int
 	renameError    string
 
 	ascendEntry    fuzzy.MatchResult
-	ascendBuf      string
-	ascendCursor   int
 	ascendError    string
 	ascendProjectsDir string
-
-	promptBuf    string
-	promptCursor int
 
 	renderOnce bool
 	noCls      bool
@@ -88,6 +81,17 @@ func (opt Option) applyBubble(s *bubbleSelector) {
 func (s *bubbleSelector) init() {
 	os.MkdirAll(s.basePath, 0755)
 	s.loadTries()
+
+	ti := textinput.New()
+	ti.Placeholder = ""
+	ti.CharLimit = 0
+	ti.Width = 60
+	ti.Focus()
+	s.searchInput = ti
+
+	s.dialogInput = textinput.New()
+	s.dialogInput.CharLimit = 0
+	s.dialogInput.Width = 60
 }
 
 func (s *bubbleSelector) loadTries() {
@@ -152,10 +156,11 @@ func (s *bubbleSelector) loadTries() {
 }
 
 func (s *bubbleSelector) getResults() []fuzzy.MatchResult {
-	if s.lastQuery == s.inputBuf && s.cachedResults != nil {
+	query := s.searchInput.Value()
+	if s.lastQuery == query && s.cachedResults != nil {
 		return s.cachedResults
 	}
-	s.lastQuery = s.inputBuf
+	s.lastQuery = query
 	if s.matcher == nil {
 		return nil
 	}
@@ -163,7 +168,7 @@ func (s *bubbleSelector) getResults() []fuzzy.MatchResult {
 	if maxResults < 3 {
 		maxResults = 3
 	}
-	all := s.matcher.Match(s.inputBuf)
+	all := s.matcher.Match(query)
 	sortResults(all)
 	if len(all) > maxResults {
 		all = all[:maxResults]
@@ -193,7 +198,7 @@ func (s *bubbleSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (s *bubbleSelector) clampCursor() {
 	results := s.getResults()
 	total := len(results)
-	if s.inputBuf != "" {
+	if s.searchInput.Value() != "" {
 		total++
 	}
 	if s.cursorPos >= total {
@@ -206,7 +211,7 @@ func (s *bubbleSelector) clampCursor() {
 
 func (s *bubbleSelector) clampScroll() {
 	results := s.getResults()
-	showCreateNew := s.inputBuf != ""
+	showCreateNew := s.searchInput.Value() != ""
 	total := len(results)
 	if showCreateNew {
 		total++
@@ -240,26 +245,37 @@ func (s *bubbleSelector) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (s *bubbleSelector) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Let textinput handle text-editing keys first
+	prev := s.searchInput.Value()
+	ti, _ := s.searchInput.Update(msg)
+	s.searchInput = ti
+	edited := s.searchInput.Value() != prev
+	if edited {
+		s.cursorPos = 0
+		return s, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyEnter:
+		query := s.searchInput.Value()
 		results := s.getResults()
 		if s.deleteMode && len(s.markedForDeletion) > 0 {
 			s.mode = ModeDelete
-			s.deleteBuf = ""
-			s.deleteCursor = 0
+			s.dialogInput.SetValue("")
+			s.dialogInput.Focus()
 			return s, nil
 		} else if s.cursorPos < len(results) {
 			s.result = &Result{Type: ResultCd, Path: results[s.cursorPos].Entry.Path}
 			return s, tea.Quit
-		} else if s.inputBuf != "" {
+		} else if query != "" {
 			datePrefix := time.Now().Format("2006-01-02")
-			name := datePrefix + "-" + strings.ReplaceAll(s.inputBuf, " ", "-")
+			name := datePrefix + "-" + strings.ReplaceAll(query, " ", "-")
 			s.result = &Result{Type: ResultMkdir, Path: filepath.Join(s.basePath, name)}
 			return s, tea.Quit
 		} else {
 			s.mode = ModePrompt
-			s.promptBuf = ""
-			s.promptCursor = 0
+			s.dialogInput.SetValue("")
+			s.dialogInput.Focus()
 			return s, nil
 		}
 
@@ -277,27 +293,13 @@ func (s *bubbleSelector) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyDown:
+		query := s.searchInput.Value()
 		total := len(s.getResults())
-		if s.inputBuf != "" {
+		if query != "" {
 			total++
 		}
 		if s.cursorPos < total-1 {
 			s.cursorPos++
-		}
-
-	case tea.KeyBackspace:
-		if s.inputCursor > 0 {
-			s.inputBuf = s.inputBuf[:s.inputCursor-1] + s.inputBuf[s.inputCursor:]
-			s.inputCursor--
-		}
-		s.cursorPos = 0
-
-	case tea.KeyCtrlA:
-		s.inputCursor = 0
-
-	case tea.KeyCtrlB:
-		if s.inputCursor > 0 {
-			s.inputCursor--
 		}
 
 	case tea.KeyCtrlD:
@@ -321,26 +323,16 @@ func (s *bubbleSelector) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyCtrlE:
-		s.inputCursor = len(s.inputBuf)
-
-	case tea.KeyCtrlF:
-		if s.inputCursor < len(s.inputBuf) {
-			s.inputCursor++
-		}
-
 	case tea.KeyCtrlG:
 		results := s.getResults()
 		if s.cursorPos < len(results) {
 			s.enterAscendDialog(results[s.cursorPos])
 		}
 
-	case tea.KeyCtrlK:
-		s.inputBuf = s.inputBuf[:s.inputCursor]
-
 	case tea.KeyCtrlN:
+		query := s.searchInput.Value()
 		total := len(s.getResults())
-		if s.inputBuf != "" {
+		if query != "" {
 			total++
 		}
 		if s.cursorPos < total-1 {
@@ -359,32 +351,20 @@ func (s *bubbleSelector) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyCtrlT:
+		query := s.searchInput.Value()
 		datePrefix := time.Now().Format("2006-01-02")
-		if s.inputBuf != "" {
-			name := datePrefix + "-" + strings.ReplaceAll(s.inputBuf, " ", "-")
+		if query != "" {
+			name := datePrefix + "-" + strings.ReplaceAll(query, " ", "-")
 			s.result = &Result{Type: ResultMkdir, Path: filepath.Join(s.basePath, name)}
 		} else {
 			s.mode = ModePrompt
+			s.dialogInput.SetValue("")
+			s.dialogInput.Focus()
 		}
 		if s.result != nil {
 			return s, tea.Quit
 		}
 
-	case tea.KeyCtrlW:
-		if s.inputCursor > 0 {
-			newPos := wordBoundaryBackward(s.inputBuf, s.inputCursor)
-			s.inputBuf = s.inputBuf[:newPos] + s.inputBuf[s.inputCursor:]
-			s.inputCursor = newPos
-		}
-
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
-			if r >= 32 && r != 127 && inputCharRune(r) {
-				s.inputBuf = s.inputBuf[:s.inputCursor] + string(r) + s.inputBuf[s.inputCursor:]
-				s.inputCursor++
-				s.cursorPos = 0
-			}
-		}
 	}
 	return s, nil
 }
@@ -395,9 +375,11 @@ func inputCharRune(r rune) bool {
 }
 
 func (s *bubbleSelector) handleDeleteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
-		if s.deleteBuf == "YES" {
+	ti, _ := s.dialogInput.Update(msg)
+	s.dialogInput = ti
+
+	if msg.Type == tea.KeyEnter {
+		if s.dialogInput.Value() == "YES" {
 			results := s.getResults()
 			var validatedPaths []string
 			baseReal, _ := filepath.EvalSymlinks(s.basePath)
@@ -420,27 +402,19 @@ func (s *bubbleSelector) handleDeleteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s.markedForDeletion = nil
 			s.deleteMode = false
 			s.mode = ModeMain
+			s.searchInput.Focus()
 			return s, tea.Quit
 		}
 		s.markedForDeletion = nil
 		s.deleteMode = false
 		s.mode = ModeMain
-	case tea.KeyEsc:
+		s.searchInput.Focus()
+	}
+	if msg.Type == tea.KeyEsc {
 		s.markedForDeletion = nil
 		s.deleteMode = false
 		s.mode = ModeMain
-	case tea.KeyBackspace:
-		if s.deleteCursor > 0 {
-			s.deleteBuf = s.deleteBuf[:s.deleteCursor-1] + s.deleteBuf[s.deleteCursor:]
-			s.deleteCursor--
-		}
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
-			if r >= 32 {
-				s.deleteBuf = s.deleteBuf[:s.deleteCursor] + string(r) + s.deleteBuf[s.deleteCursor:]
-				s.deleteCursor++
-			}
-		}
+		s.searchInput.Focus()
 	}
 	return s, nil
 }
@@ -449,67 +423,30 @@ func (s *bubbleSelector) enterRenameDialog(entry fuzzy.MatchResult) {
 	s.deleteMode = false
 	s.markedForDeletion = nil
 	s.renameEntry = entry
-	s.renameBuf = entry.Entry.Name
-	s.renameCursor = len(s.renameBuf)
 	s.renameError = ""
+	s.dialogInput.SetValue(entry.Entry.Name)
+	s.dialogInput.Focus()
 	s.mode = ModeRename
 }
 
 func (s *bubbleSelector) handleRenameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
+	ti, _ := s.dialogInput.Update(msg)
+	s.dialogInput = ti
+
+	if msg.Type == tea.KeyEnter {
 		errMsg := s.finalizeRename()
 		if errMsg == "" {
 			if s.result != nil {
 				return s, tea.Quit
 			}
+			s.searchInput.Focus()
 			return s, nil
 		}
 		s.renameError = errMsg
-	case tea.KeyEsc:
+	}
+	if msg.Type == tea.KeyEsc {
 		s.mode = ModeMain
-	case tea.KeyBackspace:
-		if s.renameCursor > 0 {
-			s.renameBuf = s.renameBuf[:s.renameCursor-1] + s.renameBuf[s.renameCursor:]
-			s.renameCursor--
-		}
-		s.renameError = ""
-	case tea.KeyCtrlA:
-		s.renameCursor = 0
-
-	case tea.KeyCtrlE:
-		s.renameCursor = len(s.renameBuf)
-
-	case tea.KeyCtrlB:
-		if s.renameCursor > 0 {
-			s.renameCursor--
-		}
-
-	case tea.KeyCtrlF:
-		if s.renameCursor < len(s.renameBuf) {
-			s.renameCursor++
-		}
-
-	case tea.KeyCtrlK:
-		s.renameBuf = s.renameBuf[:s.renameCursor]
-		s.renameError = ""
-
-	case tea.KeyCtrlW:
-		if s.renameCursor > 0 {
-			newPos := wordBoundaryBackward(s.renameBuf, s.renameCursor)
-			s.renameBuf = s.renameBuf[:newPos] + s.renameBuf[s.renameCursor:]
-			s.renameCursor = newPos
-		}
-		s.renameError = ""
-
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
-			if r >= 32 && renameCharRune(r) {
-				s.renameBuf = s.renameBuf[:s.renameCursor] + string(r) + s.renameBuf[s.renameCursor:]
-				s.renameCursor++
-				s.renameError = ""
-			}
-		}
+		s.searchInput.Focus()
 	}
 	return s, nil
 }
@@ -520,7 +457,7 @@ func renameCharRune(r rune) bool {
 }
 
 func (s *bubbleSelector) finalizeRename() string {
-	newName := strings.TrimSpace(s.renameBuf)
+	newName := strings.TrimSpace(s.dialogInput.Value())
 	newName = strings.ReplaceAll(newName, " ", "-")
 	if newName == "" {
 		return "Name cannot be empty"
@@ -557,75 +494,32 @@ func (s *bubbleSelector) enterAscendDialog(entry fuzzy.MatchResult) {
 	if p := os.Getenv("TRY_PROJECTS"); p != "" {
 		s.ascendProjectsDir = p
 	}
-	s.ascendBuf = filepath.Join(s.ascendProjectsDir, projectName)
-	s.ascendCursor = len(s.ascendBuf)
 	s.ascendError = ""
+	s.dialogInput.SetValue(filepath.Join(s.ascendProjectsDir, projectName))
+	s.dialogInput.Focus()
 	s.mode = ModeAscend
 }
 
 func (s *bubbleSelector) handleAscendKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
+	ti, _ := s.dialogInput.Update(msg)
+	s.dialogInput = ti
+
+	if msg.Type == tea.KeyEnter {
 		errMsg := s.finalizeAscend()
 		if errMsg == "" {
 			return s, tea.Quit
 		}
 		s.ascendError = errMsg
-	case tea.KeyEsc:
+	}
+	if msg.Type == tea.KeyEsc {
 		s.mode = ModeMain
-	case tea.KeyBackspace:
-		if s.ascendCursor > 0 {
-			s.ascendBuf = s.ascendBuf[:s.ascendCursor-1] + s.ascendBuf[s.ascendCursor:]
-			s.ascendCursor--
-		}
-		s.ascendError = ""
-	case tea.KeyCtrlA:
-		s.ascendCursor = 0
-
-	case tea.KeyCtrlE:
-		s.ascendCursor = len(s.ascendBuf)
-
-	case tea.KeyCtrlB:
-		if s.ascendCursor > 0 {
-			s.ascendCursor--
-		}
-
-	case tea.KeyCtrlF:
-		if s.ascendCursor < len(s.ascendBuf) {
-			s.ascendCursor++
-		}
-
-	case tea.KeyCtrlK:
-		s.ascendBuf = s.ascendBuf[:s.ascendCursor]
-		s.ascendError = ""
-
-	case tea.KeyCtrlW:
-		if s.ascendCursor > 0 {
-			newPos := wordBoundaryBackward(s.ascendBuf, s.ascendCursor)
-			s.ascendBuf = s.ascendBuf[:newPos] + s.ascendBuf[s.ascendCursor:]
-			s.ascendCursor = newPos
-		}
-		s.ascendError = ""
-
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
-			if r >= 32 && ascendCharRune(r) {
-				s.ascendBuf = s.ascendBuf[:s.ascendCursor] + string(r) + s.ascendBuf[s.ascendCursor:]
-				s.ascendCursor++
-				s.ascendError = ""
-			}
-		}
+		s.searchInput.Focus()
 	}
 	return s, nil
 }
 
-func ascendCharRune(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
-		(r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' || r == ' ' || r == '/' || r == '~'
-}
-
 func (s *bubbleSelector) finalizeAscend() string {
-	dest := strings.TrimSpace(s.ascendBuf)
+	dest := strings.TrimSpace(s.dialogInput.Value())
 	if dest == "" {
 		return "Destination cannot be empty"
 	}
@@ -647,29 +541,22 @@ func (s *bubbleSelector) finalizeAscend() string {
 }
 
 func (s *bubbleSelector) handlePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
-		if s.promptBuf != "" {
+	ti, _ := s.dialogInput.Update(msg)
+	s.dialogInput = ti
+
+	if msg.Type == tea.KeyEnter {
+		if s.dialogInput.Value() != "" {
 			datePrefix := time.Now().Format("2006-01-02")
-			name := datePrefix + "-" + strings.ReplaceAll(s.promptBuf, " ", "-")
+			name := datePrefix + "-" + strings.ReplaceAll(s.dialogInput.Value(), " ", "-")
 			s.result = &Result{Type: ResultMkdir, Path: filepath.Join(s.basePath, name)}
 			return s, tea.Quit
 		}
 		s.mode = ModeMain
-	case tea.KeyEsc:
+		s.searchInput.Focus()
+	}
+	if msg.Type == tea.KeyEsc {
 		s.mode = ModeMain
-	case tea.KeyBackspace:
-		if s.promptCursor > 0 {
-			s.promptBuf = s.promptBuf[:s.promptCursor-1] + s.promptBuf[s.promptCursor:]
-			s.promptCursor--
-		}
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
-			if r >= 32 && inputCharRune(r) {
-				s.promptBuf = s.promptBuf[:s.promptCursor] + string(r) + s.promptBuf[s.promptCursor:]
-				s.promptCursor++
-			}
-		}
+		s.searchInput.Focus()
 	}
 	return s, nil
 }

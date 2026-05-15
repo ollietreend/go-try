@@ -46,7 +46,7 @@ func (s *bubbleSelector) viewMain() string {
 	buf.WriteByte('\n')
 
 	prefix := "Search: "
-	inputText := renderInput(s.inputBuf, s.inputCursor)
+	inputText := s.searchInput.View()
 	buf.WriteString(tui.DimText(prefix) + inputText)
 	buf.WriteByte('\n')
 
@@ -54,7 +54,7 @@ func (s *bubbleSelector) viewMain() string {
 	buf.WriteByte('\n')
 
 	results := s.getResults()
-	showCreateNew := s.inputBuf != ""
+	showCreateNew := s.searchInput.Value() != ""
 	visible := h - 6
 	if visible < 3 {
 		visible = 3
@@ -156,8 +156,8 @@ func (s *bubbleSelector) renderCreateLine(selected bool, w int) string {
 		arrow = "\u2192 "
 	}
 	datePrefix := time.Now().Format("2006-01-02")
-	label := fmt.Sprintf("\U0001F4C2 Create new: %s-%s", datePrefix, s.inputBuf)
-	if s.inputBuf == "" {
+	label := fmt.Sprintf("\U0001F4C2 Create new: %s-%s", datePrefix, s.searchInput.Value())
+	if s.searchInput.Value() == "" {
 		label = fmt.Sprintf("\U0001F4C2 Create new: %s-", datePrefix)
 	}
 	line := arrow + label
@@ -201,8 +201,7 @@ func (s *bubbleSelector) viewDelete() string {
 	buf.WriteByte('\n')
 
 	prefix := "Type YES to confirm: "
-	inputText := renderInput(s.deleteBuf, s.deleteCursor)
-	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText))
+	buf.WriteString(centerLine(w, tui.DimText(prefix)+s.dialogInput.View()))
 	buf.WriteByte('\n')
 
 	buf.WriteByte('\n')
@@ -231,8 +230,7 @@ func (s *bubbleSelector) viewRename() string {
 	buf.WriteByte('\n')
 
 	prefix := "New name: "
-	inputText := renderInput(s.renameBuf, s.renameCursor)
-	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText))
+	buf.WriteString(centerLine(w, tui.DimText(prefix)+s.dialogInput.View()))
 	buf.WriteByte('\n')
 
 	if s.renameError != "" {
@@ -273,8 +271,7 @@ func (s *bubbleSelector) viewAscend() string {
 	buf.WriteByte('\n')
 
 	prefix := "Move to: "
-	inputText := renderInput(s.ascendBuf, s.ascendCursor)
-	buf.WriteString(centerLine(w, tui.DimText(prefix)+inputText))
+	buf.WriteString(centerLine(w, tui.DimText(prefix)+s.dialogInput.View()))
 	buf.WriteByte('\n')
 
 	buf.WriteByte('\n')
@@ -305,7 +302,7 @@ func (s *bubbleSelector) viewPrompt() string {
 
 	datePrefix := time.Now().Format("2006-01-02")
 	buf.WriteString("Enter new try name\n\n")
-	buf.WriteString("> " + datePrefix + "-" + renderInput(s.promptBuf, s.promptCursor) + "\n")
+	buf.WriteString("> " + datePrefix + "-" + s.dialogInput.View() + "\n")
 
 	return buf.String()
 }
@@ -418,9 +415,8 @@ func RunBubbletea(opts ...Option) *Result {
 			s.basePath = p
 		}
 	}
-	if s.inputBuf == "" && s.searchTerm != "" {
-		s.inputBuf = strings.ReplaceAll(s.searchTerm, " ", "-")
-		s.inputCursor = len(s.inputBuf)
+	if s.searchInput.Value() == "" && s.searchTerm != "" {
+		s.searchInput.SetValue(strings.ReplaceAll(s.searchTerm, " ", "-"))
 	}
 	s.width = 80
 	s.height = 24
